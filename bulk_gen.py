@@ -18,14 +18,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 fake = Faker()
 
 # ✅ Connect to PostgreSQL
+
+
 def connect_db():
     try:
         conn = psycopg2.connect(
-            dbname="flights",
-            user="postgres",
-            password="1234",
-            host="localhost",
-            port="5432"
+            dbname=os.getenv("DB_NAME"),      # Read from environment variable
+            user=os.getenv("DB_USER"),        # Read from environment variable
+            password=os.getenv("DB_PASSWORD"), # Read from environment variable
+            host=os.getenv("DB_HOST"),        # Read from environment variable
+            port=os.getenv("DB_PORT")         
         )
         logging.info("Connected to the database.")
         return conn
