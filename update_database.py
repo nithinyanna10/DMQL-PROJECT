@@ -11,12 +11,3 @@ def connect_db():
         port=os.getenv("DB_PORT")         # Read from environment variable
     )
     return conn
-
-# Example usage
-if __name__ == "__main__":
-    conn = connect_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM Countries LIMIT 1")
-    print(cur.fetchone())
-    cur.close()
-    conn.close()
