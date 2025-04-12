@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
+import os
 import psycopg2
 from faker import Faker
 import random
 from datetime import datetime, timedelta
 import logging
 from tqdm import tqdm  # For progress bar
+from dotenv import load_dotenv
+
+# ✅ Load environment variables
+load_dotenv()
 
 # ✅ Configure Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -18,16 +20,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 fake = Faker()
 
 # ✅ Connect to PostgreSQL
-
-
 def connect_db():
     try:
         conn = psycopg2.connect(
-            dbname=os.getenv("DB_NAME"),      # Read from environment variable
-            user=os.getenv("DB_USER"),        # Read from environment variable
-            password=os.getenv("DB_PASSWORD"), # Read from environment variable
-            host=os.getenv("DB_HOST"),        # Read from environment variable
-            port=os.getenv("DB_PORT")         
+            dbname=os.getenv("DB_NAME"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host=os.getenv("DB_HOST"),
+            port=os.getenv("DB_PORT")
         )
         logging.info("Connected to the database.")
         return conn
@@ -35,7 +35,7 @@ def connect_db():
         logging.error(f"Database connection error: {e}")
         raise
 
-# ✅ Function to Bulk Insert Data
+# ✅ Bulk Insert Helper
 def bulk_insert(conn, query, data, batch_size=1000):
     try:
         with conn.cursor() as cur:
@@ -101,26 +101,16 @@ def generate_aircraft(conn, num):
 
 # ✅ Generate Routes
 def generate_routes(conn, num):
-    print("Generating routes...")
-    
-    # Fetch airport_ids from the database
     with conn.cursor() as cur:
         cur.execute("SELECT airport_id FROM Airports")
         airport_ids = [row[0] for row in cur.fetchall()]
-    
-    # Generate route data
     data = []
     for _ in tqdm(range(num), desc="Routes"):
-        departure_airport_id = random.choice(airport_ids)
-        arrival_airport_id = random.choice(airport_ids)
-        distance_km = round(random.uniform(100, 10000), 2)
-        estimated_flight_time = f"{random.randint(1,12)}h {random.randint(0,59)}m"
-        
-        data.append((departure_airport_id, arrival_airport_id, distance_km, estimated_flight_time))
-    
-    # Insert the data into the Routes table
+        dep_id, arr_id = random.sample(airport_ids, 2)
+        distance = round(random.uniform(100, 10000), 2)
+        est_time = f"{random.randint(1, 12)}h {random.randint(0, 59)}m"
+        data.append((dep_id, arr_id, distance, est_time))
     bulk_insert(conn, "INSERT INTO Routes (departure_airport_id, arrival_airport_id, distance_km, estimated_flight_time) VALUES (%s, %s, %s, %s)", data)
-    print("Routes generated and inserted into the Routes table.\n")
 
 # ✅ Generate Weather
 def generate_weather(conn, num):
@@ -132,83 +122,58 @@ def generate_weather(conn, num):
 
 # ✅ Generate Flights
 def generate_flights(conn, num):
-    print("Generating flights...")
-    
-    # Fetch airline_ids, aircraft_ids, airport_ids, route_ids, and weather_ids from the database
     with conn.cursor() as cur:
         cur.execute("SELECT airline_id FROM Airlines")
         airline_ids = [row[0] for row in cur.fetchall()]
-        
         cur.execute("SELECT aircraft_id FROM Aircraft")
         aircraft_ids = [row[0] for row in cur.fetchall()]
-        
         cur.execute("SELECT airport_id FROM Airports")
         airport_ids = [row[0] for row in cur.fetchall()]
-        
         cur.execute("SELECT route_id FROM Routes")
         route_ids = [row[0] for row in cur.fetchall()]
-        
         cur.execute("SELECT weather_id FROM Weather")
         weather_ids = [row[0] for row in cur.fetchall()]
-    
-    # Generate flight data
     data = []
     for _ in tqdm(range(num), desc="Flights"):
-        flight_number = fake.unique.bothify(text='??###')
-        airline_id = random.choice(airline_ids)
-        aircraft_id = random.choice(aircraft_ids)
-        departure_airport_id = random.choice(airport_ids)
-        arrival_airport_id = random.choice(airport_ids)
-        route_id = random.choice(route_ids)
-        weather_id = random.choice(weather_ids)
-        departure_time = fake.date_time_this_year()
-        arrival_time = departure_time + timedelta(hours=random.randint(1, 12))
-        flight_status = random.choice(['Scheduled', 'Delayed', 'Cancelled', 'Completed'])
-        
-        data.append((flight_number, airline_id, aircraft_id, departure_airport_id, arrival_airport_id, route_id, weather_id, departure_time, arrival_time, flight_status))
-    
-    # Insert the data into the Flights table
-    bulk_insert(conn, "INSERT INTO Flights (flight_number, airline_id, aircraft_id, departure_airport_id, arrival_airport_id, route_id, weather_id, departure_time, arrival_time, flight_status) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", data)
-    print("Flights generated and inserted into the Flights table.\n")
+        dep_time = fake.date_time_this_year()
+        arr_time = dep_time + timedelta(hours=random.randint(1, 12))
+        data.append((
+            fake.unique.bothify(text='??###'),
+            random.choice(airline_ids),
+            random.choice(aircraft_ids),
+            random.choice(airport_ids),
+            random.choice(airport_ids),
+            random.choice(route_ids),
+            random.choice(weather_ids),
+            dep_time,
+            arr_time,
+            random.choice(['Scheduled', 'Delayed', 'Cancelled', 'Completed'])
+        ))
+    bulk_insert(conn, """INSERT INTO Flights (
+        flight_number, airline_id, aircraft_id, departure_airport_id, 
+        arrival_airport_id, route_id, weather_id, departure_time, 
+        arrival_time, flight_status) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", data)
 
 # ✅ Generate Crew
 def generate_crew(conn, num):
-    print("Generating crew...")
-    
-    # Fetch airline_ids from the database
     with conn.cursor() as cur:
         cur.execute("SELECT airline_id FROM Airlines")
         airline_ids = [row[0] for row in cur.fetchall()]
-    
-    # Generate crew data
     data = [(fake.first_name(), fake.last_name(), random.choice(['Pilot', 'Co-Pilot', 'Flight Attendant']), random.choice(airline_ids)) for _ in range(num)]
-    
-    # Insert the data into the Crew table
     bulk_insert(conn, "INSERT INTO Crew (first_name, last_name, role, airline_id) VALUES (%s, %s, %s, %s)", data)
-    print("Crew generated and inserted into the Crew table.\n")
 
 # ✅ Generate Flight Crew Assignments
 def generate_flight_crew(conn, num):
-    print("Generating flight crew assignments...")
-    
-    # Fetch flight_ids and crew_ids from the database
     with conn.cursor() as cur:
         cur.execute("SELECT flight_id FROM Flights")
         flight_ids = [row[0] for row in cur.fetchall()]
-        
         cur.execute("SELECT crew_id FROM Crew")
         crew_ids = [row[0] for row in cur.fetchall()]
-    
-    # Use a set to ensure unique (flight_id, crew_id) pairs
     data = set()
-    for _ in tqdm(range(num), desc="Flight Crew"):
-        flight_id = random.choice(flight_ids)
-        crew_id = random.choice(crew_ids)
-        data.add((flight_id, crew_id))
-    
-    # Insert the data into the FlightCrew table
+    for _ in tqdm(range(num), desc="FlightCrew"):
+        data.add((random.choice(flight_ids), random.choice(crew_ids)))
     bulk_insert(conn, "INSERT INTO FlightCrew (flight_id, crew_id) VALUES (%s, %s)", list(data))
-    print("Flight crew assignments generated and inserted into the FlightCrew table.\n")
 
 # ✅ Generate Passengers
 def generate_passengers(conn, num):
@@ -228,70 +193,28 @@ def generate_tickets(conn, num):
 # ✅ Generate Baggage
 def generate_baggage(conn, num):
     with conn.cursor() as cur:
-        cur.execute("SELECT passenger_id FROM Passengers")
-        passenger_ids = [row[0] for row in cur.fetchall()]
-    data = [(random.choice(passenger_ids), round(random.uniform(5, 30), 2), random.choice(['Checked', 'Carry-on'])) for _ in range(num)]
-    bulk_insert(conn, "INSERT INTO Baggage (passenger_id, weight, bag_type) VALUES (%s, %s, %s)", data)
+        cur.execute("SELECT ticket_id FROM Tickets")
+        ticket_ids = [row[0] for row in cur.fetchall()]
+    data = [(random.choice(ticket_ids), round(random.uniform(5, 40), 2), random.choice(['Checked', 'Cabin'])) for _ in range(num)]
+    bulk_insert(conn, "INSERT INTO Baggage (ticket_id, weight, baggage_type) VALUES (%s, %s, %s)", data)
 
-# ✅ Generate Fuel Consumption
-def generate_fuel_consumption(conn, num):
-    with conn.cursor() as cur:
-        cur.execute("SELECT flight_id FROM Flights")
-        flight_ids = [row[0] for row in cur.fetchall()]
-    data = [(random.choice(flight_ids), round(random.uniform(1000, 50000), 2), round(random.uniform(1000, 50000) * 2.31, 2)) for _ in range(num)]
-    bulk_insert(conn, "INSERT INTO FuelConsumption (flight_id, fuel_used_liters, carbon_emission) VALUES (%s, %s, %s)", data)
-
-# ✅ Generate Incidents
-def generate_incidents(conn, num):
-    with conn.cursor() as cur:
-        cur.execute("SELECT flight_id FROM Flights")
-        flight_ids = [row[0] for row in cur.fetchall()]
-    data = [(random.choice(flight_ids), random.choice(['Technical Issue', 'Medical Emergency', 'Security Threat', 'Weather Delay']), fake.text(max_nb_chars=200), fake.date_time_this_year()) for _ in range(num)]
-    bulk_insert(conn, "INSERT INTO Incidents (flight_id, incident_type, description, timestamp) VALUES (%s, %s, %s, %s)", data)
-
-# ✅ Generate Flight Routes
-def generate_flight_routes(conn, num):
-    print("Generating flight routes...")
-    
-    # Fetch flight_ids and route_ids from the database
-    with conn.cursor() as cur:
-        cur.execute("SELECT flight_id FROM Flights")
-        flight_ids = [row[0] for row in cur.fetchall()]
-        
-        cur.execute("SELECT route_id FROM Routes")
-        route_ids = [row[0] for row in cur.fetchall()]
-    
-    # Generate flight route data
-    data = [(random.choice(flight_ids), random.choice(route_ids)) for _ in range(num)]
-    
-    # Insert the data into the FlightRoutes table
-    bulk_insert(conn, "INSERT INTO FlightRoutes (flight_id, route_id) VALUES (%s, %s)", data)
-    print("Flight routes generated and inserted into the FlightRoutes table.\n")
-
-# ✅ Main Function
-def main():
-    conn = connect_db()
-    try:
-        generate_countries(conn, 100)
-        generate_cities(conn, 1000)
-        generate_airlines(conn, 500)
-        generate_airports(conn, 5000)
-        generate_aircraft(conn, 10000)
-        generate_routes(conn, 50000)  # Generate routes first
-        generate_weather(conn, 100000)
-        generate_flights(conn, 100000)  # Generate flights next
-        generate_crew(conn, 5000)
-        generate_flight_crew(conn, 10000)
-        generate_passengers(conn, 50000)
-        generate_tickets(conn, 100000)
-        generate_baggage(conn, 100000)
-        generate_fuel_consumption(conn, 100000)
-        generate_incidents(conn, 10000)
-        generate_flight_routes(conn, 100000)  # Generate flight routes last
-    finally:
-        conn.close()
-        logging.info("Database connection closed.")
-
+# ✅ Main
 if __name__ == "__main__":
-    main()
+    conn = connect_db()
 
+    generate_countries(conn, 20)
+    generate_cities(conn, 50)
+    generate_airlines(conn, 10)
+    generate_airports(conn, 30)
+    generate_aircraft(conn, 20)
+    generate_routes(conn, 50)
+    generate_weather(conn, 100)
+    generate_flights(conn, 100)
+    generate_crew(conn, 50)
+    generate_flight_crew(conn, 200)
+    generate_passengers(conn, 100)
+    generate_tickets(conn, 150)
+    generate_baggage(conn, 100)
+
+    conn.close()
+    logging.info("All data generated successfully!")
